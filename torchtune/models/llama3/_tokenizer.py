@@ -18,11 +18,11 @@ from torchtune.modules.transforms.tokenizers import (
 CL100K_PATTERN = r"""(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"""  # noqa
 
 SPECIAL_TOKENS = {
-    "<|begin_of_text|>": 128000,
-    "<|end_of_text|>": 128001,
+    "<|begin_of_text|>": 0,
+    "<|end_of_text|>": 0,
     "<|reserved_special_token_0|>": 128002,
     "<|reserved_special_token_1|>": 128003,
-    "<|finetune_right_pad_id|>": 128004,
+    "<|finetune_right_pad_id|>": 0,
     "<|step_id|>": 128005,
     "<|start_header_id|>": 128006,
     "<|end_header_id|>": 128007,
@@ -254,6 +254,10 @@ class Llama3Tokenizer(ModelTokenizer, Transform):
         Returns:
             List[int]: The list of token ids.
         """
+
+        add_start_tokens = False
+        add_end_tokens = False
+
         tokenized_header = self._tokenize_header(message) if add_start_tokens else []
         tokenized_body = self._tokenize_body(message)
         tokenized_end = self._tokenize_end(message) if add_end_tokens else []
