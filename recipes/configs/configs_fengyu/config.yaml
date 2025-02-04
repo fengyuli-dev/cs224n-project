@@ -36,10 +36,11 @@ tokenizer:
 # Dataset
 dataset:
   _component_: torchtune.datasets.instruct_dataset
-  source: open-thoughts/OpenThoughts-114k
+  source: csv
+  data_files: /lfs/local/0/fengyuli/.cache/misc/224n/open_thoughts_short.csv
   column_map:
-    input: system
-    output: conversations
+    input: input
+    output: output
   train_on_input: False
   packed: False # True increases speed
 seed: null
@@ -56,11 +57,11 @@ checkpointer:
 resume_from_checkpoint: False
 
 # Fine-tuning arguments
-batch_size: 4
+batch_size: 1
 epochs: 1
 optimizer:
   _component_: bitsandbytes.optim.PagedAdamW8bit
-  lr: 2e-5
+  lr: 2e-6
 loss:
   _component_: torchtune.modules.loss.CEWithChunkedOutputLoss
 max_steps_per_epoch: null
