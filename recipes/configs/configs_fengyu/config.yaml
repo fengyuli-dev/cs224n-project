@@ -35,7 +35,12 @@ tokenizer:
 
 # Dataset
 dataset:
-  _component_: torchtune.datasets.alpaca_dataset
+  _component_: torchtune.datasets.instruct_dataset
+  source: open-thoughts/OpenThoughts-114k
+  column_map:
+    input: system
+    output: conversations
+  train_on_input: False
   packed: False # True increases speed
 seed: null
 shuffle: True
