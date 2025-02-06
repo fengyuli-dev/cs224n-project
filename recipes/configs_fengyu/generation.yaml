@@ -16,8 +16,8 @@ model:
 
 checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
-  checkpoint_dir: /lfs/local/0/fengyuli/output/cs224n/epoch_0/
-  checkpoint_files: [ft-model-00001-of-00001.safetensors]
+  checkpoint_dir: /lfs/local/0/fengyuli/.cache/huggingface/hub/models--HuggingFaceTB--SmolLM2-1.7B-Instruct/snapshots/4db41b7c29f5e1f883ab90b5129c21519ccb526e
+  checkpoint_files: [model.safetensors]
   output_dir: ${output_dir}
   model_type: LLAMA3_2
 
@@ -35,8 +35,8 @@ tokenizer:
 
 # Generation arguments; defaults taken from gpt-fast
 prompt:
-  system: "Answer the following question:"
-  user: "How many letter r are in the word straberry?"
+  system: 
+  user: "How many letter R's are in the word 'straberry'?. Answer with a number."
 max_new_tokens: 300
 temperature: 0.6 # 0.8 and 0.6 are popular values to try
 top_k: 300
