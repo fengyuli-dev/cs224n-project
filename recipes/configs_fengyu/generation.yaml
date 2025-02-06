@@ -1,0 +1,46 @@
+# Config for running the InferenceRecipe in generate.py to generate output
+# from Llama2 7B model
+#
+# This config assumes that you've run the following command before launching
+# this run:
+#   tune download meta-llama/Llama-2-7b-hf --output-dir /tmp/Llama-2-7b-hf --ignore-patterns "*.safetensors" --hf-token <HF_TOKEN>
+#
+# To launch, run the following command from root torchtune directory:
+#    tune run generate --config generation
+
+output_dir: ./ # Not needed
+
+# Model arguments
+model:
+  _component_: torchtune.models.smollm2.smollm2_1_7b
+
+checkpointer:
+  _component_: torchtune.training.FullModelHFCheckpointer
+  checkpoint_dir: /lfs/local/0/fengyuli/output/cs224n/epoch_0/
+  checkpoint_files: [ft-model-00001-of-00001.safetensors]
+  output_dir: ${output_dir}
+  model_type: LLAMA3_2
+
+device: cuda
+dtype: bf16
+
+seed: 1234
+
+# Tokenizer arguments
+tokenizer:
+  _component_: torchtune.models.llama3.llama3_tokenizer
+  path: /dfs/scratch1/fengyuli/llm_ckpts/smollm2_tokenizer.model
+  max_seq_len: null
+  prompt_template: null
+
+# Generation arguments; defaults taken from gpt-fast
+prompt:
+  system: "Answer the following question:"
+  user: "How many letter r are in the word straberry?"
+max_new_tokens: 300
+temperature: 0.6 # 0.8 and 0.6 are popular values to try
+top_k: 300
+
+enable_kv_cache: True
+
+quantizer: null
