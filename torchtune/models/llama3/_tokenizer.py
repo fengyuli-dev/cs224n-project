@@ -18,8 +18,8 @@ from torchtune.modules.transforms.tokenizers import (
 CL100K_PATTERN = r"""(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"""  # noqa
 
 SPECIAL_TOKENS = {
-    "<|begin_of_text|>": 0,
-    "<|end_of_text|>": 0,
+    "<|im_start|>": 1,
+    "<|im_end|>": 2,
     "<|reserved_special_token_0|>": 128002,
     "<|reserved_special_token_1|>": 128003,
     "<|finetune_right_pad_id|>": 0,
@@ -86,8 +86,8 @@ class Llama3Tokenizer(ModelTokenizer, Transform):
         self._validate_special_tokens()
 
         # Encode BOS and EOS, define pad ID
-        self.bos_id = self.special_tokens["<|begin_of_text|>"]
-        self.eos_id = self.special_tokens["<|end_of_text|>"]
+        self.bos_id = self.special_tokens["<|im_start|>"]
+        self.eos_id = self.special_tokens["<|im_end|>"]
         self.pad_id = self.special_tokens["<|finetune_right_pad_id|>"]
         self.step_id = self.special_tokens["<|step_id|>"]
 
@@ -130,8 +130,8 @@ class Llama3Tokenizer(ModelTokenizer, Transform):
         Validate that required special tokens are passed into the tokenizer.
         """
         for token in [
-            "<|begin_of_text|>",
-            "<|end_of_text|>",
+            "<|im_start|>",
+            "<|im_end|>",
             "<|start_header_id|>",
             "<|end_header_id|>",
             "<|eom_id|>",

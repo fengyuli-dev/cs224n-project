@@ -1,11 +1,7 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
 import itertools
 import sys
 import time
+import json  # Still available if needed for other purposes
 from typing import Any, Dict, List
 
 import torch
@@ -15,6 +11,7 @@ from torch import nn
 from torchtune import config, generation, training, utils
 from torchtune.data import Message, Role
 from torchtune.training import FullModelTorchTuneCheckpointer
+from tqdm import tqdm
 
 logger = utils.get_logger("DEBUG")
 
@@ -22,16 +19,7 @@ logger = utils.get_logger("DEBUG")
 class InferenceRecipe:
     """
     Recipe for generating tokens from a dense Transformer-based LLM.
-
-    Currently this recipe supports single-GPU generation only. Speculative
-    decoding is not supported.
-
-    For more details on how to use this recipe for generation, please see our
-    tutorial: https://pytorch.org/torchtune/main/tutorials/e2e_flow.html#generation
-
-    For using this recipe with a quantized model, please the following section of
-    the above tutorial:
-    https://pytorch.org/torchtune/main/tutorials/e2e_flow.html#speeding-up-generation-using-quantization
+    Adapted for evaluating accuracy on the MMLU benchmark using Hugging Face datasets.
     """
 
     def __init__(self, cfg: DictConfig) -> None:
@@ -111,22 +99,19 @@ class InferenceRecipe:
         messages.extend(
             [
                 Message(role="user", content=prompt["user"]),
-                # Empty assistant message to kick-start generation
-                Message(role="assistant", content=""),
+                # Optionally include an assistant message (may be empty)
+                Message(role="assistant", content=prompt.get("assistant", "")),
             ]
         )
         return self._tokenizer({"messages": messages}, inference=True)["tokens"]
 
     @torch.inference_mode()
     def generate(self, cfg: DictConfig):
-        tokens = self.convert_prompt_to_tokens(
-            cfg.prompt,
-        )
+        tokens = self.convert_prompt_to_tokens(cfg.prompt)
         prompt = torch.tensor(tokens, dtype=torch.int, device=self._device)
 
         custom_generate_next_token = None
 
-        # Ensure the cache is setup on the right device, with only as many tokens as we need
         if cfg.enable_kv_cache:
             with self._device:
                 self._model.setup_caches(
@@ -135,8 +120,6 @@ class InferenceRecipe:
                     decoder_max_seq_len=prompt.numel() + cfg.max_new_tokens,
                 )
 
-        # since quantized model uses torch.compile to get speedup, it needs a warm up / prefill run
-        # to get the accurate performance measurement
         if self._quantization_mode is not None:
             logger.info("Starting compilation to improve generation performance ...")
             custom_generate_next_token = torch.compile(
@@ -170,7 +153,8 @@ class InferenceRecipe:
         generated_tokens = generated_tokens.tolist()
         t = time.perf_counter() - t0
 
-        logger.info(self._tokenizer.decode(generated_tokens[0]))
+        output_text = self._tokenizer.decode(generated_tokens[0])
+        logger.info(output_text)
 
         model_size = sum(
             [
@@ -193,13 +177,122 @@ class InferenceRecipe:
                 f"Memory used: {torch_device.max_memory_allocated() / 1e9:.02f} GB"
             )
 
+    @torch.inference_mode()
+    def evaluate_mmlu(self, cfg: DictConfig):
+        """
+        Evaluate the model's accuracy on the MMLU benchmark accessed from Hugging Face.
+        Assumes that the dataset returns examples with the keys:
+            - "question": The question text.
+            - "choices": Either a dict mapping choice labels to option texts or a list of options.
+            - "answer": The correct choice label.
+        Optionally, if "choices" is a list, it is converted to a dict using A, B, C, etc.
+        """
+
+        if cfg.enable_kv_cache:
+            with self._device:
+                self._model.setup_caches(
+                    batch_size=1,
+                    dtype=self._dtype,
+                    decoder_max_seq_len=2 * 8192,
+                )
+
+        from datasets import load_dataset
+
+        # Load the MMLU dataset from Hugging Face.
+        # Optionally, the split can be specified in the configuration (default: "test")
+        dataset = load_dataset("cais/mmlu", "all", split="validation")
+        total_questions = len(dataset)
+        correct = 0
+
+        custom_generate_next_token = None
+        if self._quantization_mode is not None:
+            custom_generate_next_token = torch.compile(
+                generation.generate_next_token, mode="max-autotune", fullgraph=True
+            )
+            dummy_prompt = torch.tensor([0, 1, 2], dtype=torch.int, device=self._device)
+            _ = generation.generate(
+                model=self._model,
+                prompt=dummy_prompt,
+                max_generated_tokens=2,
+                temperature=cfg.temperature,
+                top_k=cfg.top_k,
+                stop_tokens=self._tokenizer.stop_tokens,
+                custom_generate_next_token=custom_generate_next_token,
+            )
+            self._model.reset_caches()
+
+        logger.info(f"Starting MMLU evaluation over {total_questions} questions.")
+        start_time = time.perf_counter()
+
+        for idx, example in tqdm(enumerate(dataset)):
+            question = example["question"]
+            choices = example["choices"]
+            answer = example["answer"]
+            answer = chr(ord("A") + int(answer))
+
+            # If choices is a list, convert it to a dict with keys A, B, C, ...
+            if isinstance(choices, list):
+                labels = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+                choices = {labels[i]: choice for i, choice in enumerate(choices)}
+
+            # Build the prompt.
+            prompt_text = (
+                f"Answer with one single letter. Question: {question}\nOptions:\n"
+            )
+            for label, option in choices.items():
+                prompt_text += f"{label}. {option}\n"
+            prompt_text += "Answer:"
+            prompt_dict = {"user": prompt_text, "assistant": ""}
+
+            tokens = self.convert_prompt_to_tokens(prompt_dict)
+            prompt_tensor = torch.tensor(tokens, dtype=torch.int, device=self._device)
+
+            generated_tokens, _ = generation.generate(
+                model=self._model,
+                prompt=prompt_tensor,
+                max_generated_tokens=cfg.max_new_tokens,
+                pad_id=self._tokenizer.pad_id,
+                temperature=cfg.temperature,
+                top_k=cfg.top_k,
+                stop_tokens=self._tokenizer.stop_tokens,
+                custom_generate_next_token=custom_generate_next_token,
+            )
+            generated_tokens = generated_tokens.tolist()[0]
+            output_text = self._tokenizer.decode(generated_tokens)
+
+            breakpoint()
+
+            # Simple heuristic: the letter followed by the first occurance of assistant\n is the answer.
+            if "assistant\n" in output_text:
+                predicted = output_text.split("assistant\n")[1].strip()[0]
+            else:
+                predicted = ""
+
+            is_correct = predicted.strip().upper() == str(answer).strip().upper()
+            if is_correct:
+                correct += 1
+
+            logger.info(
+                f"Q{idx+1}: True Answer: {answer} | Model Answer: {predicted} | {'Correct' if is_correct else 'Incorrect'}"
+            )
+
+        total_time = time.perf_counter() - start_time
+        accuracy = correct / total_questions * 100
+        logger.info(
+            f"MMLU Evaluation completed: {accuracy:.2f}% accuracy over {total_questions} questions in {total_time:.2f} sec."
+        )
+
 
 @config.parse
 def main(cfg: DictConfig) -> None:
     config.log_config(recipe_name="InferenceRecipe", cfg=cfg)
     recipe = InferenceRecipe(cfg=cfg)
     recipe.setup(cfg=cfg)
-    recipe.generate(cfg=cfg)
+    # If evaluation mode is enabled, run MMLU evaluation; otherwise, do standard generation.
+    if cfg.get("evaluate_mmlu", False):
+        recipe.evaluate_mmlu(cfg=cfg)
+    else:
+        recipe.generate(cfg=cfg)
 
 
 if __name__ == "__main__":

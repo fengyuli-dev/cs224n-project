@@ -16,10 +16,10 @@ model:
 
 checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
-  # checkpoint_dir: /lfs/local/0/fengyuli/.cache/huggingface/hub/models--HuggingFaceTB--SmolLM2-1.7B-Instruct/snapshots/4db41b7c29f5e1f883ab90b5129c21519ccb526e
-  # checkpoint_files: [model.safetensors]
-  checkpoint_dir: /lfs/local/0/fengyuli/output/cs224n/smollm_1b/epoch_1
-  checkpoint_files: [ft-model-00001-of-00001.safetensors]
+  checkpoint_dir: /lfs/local/0/fengyuli/.cache/huggingface/hub/models--HuggingFaceTB--SmolLM2-1.7B-Instruct/snapshots/4db41b7c29f5e1f883ab90b5129c21519ccb526e
+  checkpoint_files: [model.safetensors]
+  # checkpoint_dir: /lfs/local/0/fengyuli/output/cs224n/smollm_1b/epoch_1
+  # checkpoint_files: [ft-model-00001-of-00001.safetensors]
   output_dir: ${output_dir}
   model_type: LLAMA3_2
 
