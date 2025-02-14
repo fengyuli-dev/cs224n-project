@@ -89,7 +89,6 @@ class SmolLM2Tokenizer(ModelTokenizer, Transform):
                 + "<|im_end|>"
                 + "\n"
             )
-            
         # Tokenize the combined string using the Hugging Face tokenizer.
         token_ids = self.tokenizer.encode(combined_input, add_special_tokens=False)
 

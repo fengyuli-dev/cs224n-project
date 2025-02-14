@@ -103,7 +103,7 @@ class InferenceRecipe:
             ]
         )
         tokenized = self._tokenizer({"messages": messages}, inference=True)["tokens"]
-        tokenized += self._tokenizer.encode("<|im_start|>assistant\n")
+        tokenized += self._tokenizer.encode("<|im_start|>assistant\n<think>")
         return tokenized
 
     @torch.inference_mode()
@@ -233,6 +233,8 @@ class InferenceRecipe:
             "Answer: A\n\n"
         )
 
+        cot_prompt = "Your role as an assistant involves thoroughly exploring questions through a systematic long thinking process before providing the final precise and accurate solutions. This requires engaging in a comprehensive cycle of analysis, summarizing, exploration, reassessment, reflection, backtracing, and iteration to develop well-considered thinking process. Please structure your response into two main sections: Thought and Solution. In the Thought section, detail your reasoning process using the specified format: <think> {thought with steps separated with '\n\n'} <think/> Each step should include detailed considerations such as analisying questions, summarizing relevant findings, brainstorming new ideas, verifying the accuracy of the current steps, refining any errors, and revisiting previous steps. In the Solution section, based on various attempts, explorations, and reflections from the Thought section, systematically present the final solution that you deem correct. The solution should remain a logical, accurate, concise expression style and detail necessary step needed to reach the conclusion, formatted as follows: <answer> {final formatted, precise, and clear solution} <answer/> Now, try to solve the following question through the above guidelines:"
+
         custom_generate_next_token = None
         if self._quantization_mode is not None:
             custom_generate_next_token = torch.compile(
@@ -265,7 +267,8 @@ class InferenceRecipe:
                 choices = {labels[i]: choice for i, choice in enumerate(choices)}
 
             # Build the prompt with 3-shot demonstration.
-            prompt_text = few_shot_prompt
+            # prompt_text = few_shot_prompt
+            prompt_text = cot_prompt
             prompt_text += f"Question: {question}\nOptions:\n"
             for label, option in choices.items():
                 prompt_text += f"{label}. {option}\n"
@@ -300,7 +303,6 @@ class InferenceRecipe:
                     )
             except:
                 predicted = ""
-            print(output_text)
 
             is_correct = predicted.strip().upper() == str(answer).strip().upper()
             if is_correct:
@@ -309,6 +311,8 @@ class InferenceRecipe:
             logger.info(
                 f"Q{idx+1}: True Answer: {answer} | Model Answer: {predicted} | {'Correct' if is_correct else 'Incorrect'}"
             )
+
+            breakpoint()
 
         total_time = time.perf_counter() - start_time
         accuracy = correct / total_questions * 100
