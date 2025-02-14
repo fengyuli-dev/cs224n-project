@@ -187,6 +187,7 @@ class InferenceRecipe:
             - "choices": Either a dict mapping choice labels to option texts or a list of options.
             - "answer": The correct choice label.
         Optionally, if "choices" is a list, it is converted to a dict using A, B, C, etc.
+        Incorporates 3-shot demonstration examples.
         """
 
         if cfg.enable_kv_cache:
@@ -200,10 +201,37 @@ class InferenceRecipe:
         from datasets import load_dataset
 
         # Load the MMLU dataset from Hugging Face.
-        # Optionally, the split can be specified in the configuration (default: "test")
         dataset = load_dataset("cais/mmlu", "high_school_mathematics", split="test")
         total_questions = len(dataset)
         correct = 0
+
+        # Define 3-shot demonstration examples.
+        few_shot_prompt = (
+            "Example 1:\n"
+            "Question: If you have 5 apples and you eat 2, how many apples do you have left?\n"
+            "Options:\n"
+            "A. 2\n"
+            "B. 3\n"
+            "C. 4\n"
+            "D. 5\n"
+            "Answer: B\n\n"
+            "Example 2:\n"
+            "Question: What is 7 multiplied by 6?\n"
+            "Options:\n"
+            "A. 42\n"
+            "B. 36\n"
+            "C. 48\n"
+            "D. 56\n"
+            "Answer: A\n\n"
+            "Example 3:\n"
+            "Question: What is the square of 8?\n"
+            "Options:\n"
+            "A. 64\n"
+            "B. 72\n"
+            "C. 56\n"
+            "D. 48\n"
+            "Answer: A\n\n"
+        )
 
         custom_generate_next_token = None
         if self._quantization_mode is not None:
@@ -236,8 +264,9 @@ class InferenceRecipe:
                 labels = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
                 choices = {labels[i]: choice for i, choice in enumerate(choices)}
 
-            # Build the prompt.
-            prompt_text = f"Question: {question}\nOptions:\n"
+            # Build the prompt with 3-shot demonstration.
+            prompt_text = few_shot_prompt
+            prompt_text += f"Question: {question}\nOptions:\n"
             for label, option in choices.items():
                 prompt_text += f"{label}. {option}\n"
             prompt_text += "Answer: "
@@ -261,11 +290,11 @@ class InferenceRecipe:
             generated_tokens = generated_tokens.tolist()[0]
             output_text = self._tokenizer.decode(generated_tokens)
 
-            # Simple heuristic: the letter followed by the first occurance of assistant\n is the answer.
+            # Simple heuristic: the letter following "assistant\n" is taken as the answer.
             try:
                 if "assistant\n" in output_text:
                     predicted = output_text.split("assistant\n")[1]
-                    # Retrive the first single letter word in predicted as the answer.
+                    # Retrieve the first single-letter token as the predicted answer.
                     predicted = next(
                         word for word in predicted.split() if len(word) == 1
                     )
