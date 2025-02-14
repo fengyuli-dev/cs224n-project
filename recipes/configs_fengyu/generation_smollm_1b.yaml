@@ -30,10 +30,10 @@ seed: 1234
 
 # Tokenizer arguments
 tokenizer:
-  _component_: torchtune.models.llama3.llama3_tokenizer
-  path: /dfs/scratch1/fengyuli/llm_ckpts/smollm2_tokenizer.model
-  max_seq_len: null
-  prompt_template: null
+  _component_: torchtune.models.smollm2.smollm2_tokenizer
+  # path: /dfs/scratch1/fengyuli/llm_ckpts/smollm2_tokenizer.model
+  # max_seq_len: null
+  # prompt_template: null
 
 # Generation arguments; defaults taken from gpt-fast
 prompt:

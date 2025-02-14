@@ -99,11 +99,12 @@ class InferenceRecipe:
         messages.extend(
             [
                 Message(role="user", content=prompt["user"]),
-                # Optionally include an assistant message (may be empty)
-                Message(role="assistant", content=prompt.get("assistant", "")),
+                # Message(role="assistant", content=prompt.get("assistant", "")),
             ]
         )
-        return self._tokenizer({"messages": messages}, inference=True)["tokens"]
+        tokenized = self._tokenizer({"messages": messages}, inference=True)["tokens"]
+        tokenized += self._tokenizer.encode("<|im_start|>assistant\n")
+        return tokenized
 
     @torch.inference_mode()
     def generate(self, cfg: DictConfig):
@@ -200,7 +201,7 @@ class InferenceRecipe:
 
         # Load the MMLU dataset from Hugging Face.
         # Optionally, the split can be specified in the configuration (default: "test")
-        dataset = load_dataset("cais/mmlu", "all", split="validation")
+        dataset = load_dataset("cais/mmlu", "high_school_mathematics", split="test")
         total_questions = len(dataset)
         correct = 0
 
@@ -236,13 +237,13 @@ class InferenceRecipe:
                 choices = {labels[i]: choice for i, choice in enumerate(choices)}
 
             # Build the prompt.
-            prompt_text = (
-                f"Answer with one single letter. Question: {question}\nOptions:\n"
-            )
+            prompt_text = f"Question: {question}\nOptions:\n"
             for label, option in choices.items():
                 prompt_text += f"{label}. {option}\n"
-            prompt_text += "Answer:"
-            prompt_dict = {"user": prompt_text, "assistant": ""}
+            prompt_text += "Answer: "
+            prompt_dict = {
+                "user": prompt_text,
+            }
 
             tokens = self.convert_prompt_to_tokens(prompt_dict)
             prompt_tensor = torch.tensor(tokens, dtype=torch.int, device=self._device)
@@ -260,13 +261,17 @@ class InferenceRecipe:
             generated_tokens = generated_tokens.tolist()[0]
             output_text = self._tokenizer.decode(generated_tokens)
 
-            breakpoint()
-
             # Simple heuristic: the letter followed by the first occurance of assistant\n is the answer.
-            if "assistant\n" in output_text:
-                predicted = output_text.split("assistant\n")[1].strip()[0]
-            else:
+            try:
+                if "assistant\n" in output_text:
+                    predicted = output_text.split("assistant\n")[1]
+                    # Retrive the first single letter word in predicted as the answer.
+                    predicted = next(
+                        word for word in predicted.split() if len(word) == 1
+                    )
+            except:
                 predicted = ""
+            print(output_text)
 
             is_correct = predicted.strip().upper() == str(answer).strip().upper()
             if is_correct:
