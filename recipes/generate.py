@@ -1,4 +1,5 @@
 import itertools
+import random
 import sys
 import time
 import json  # Still available if needed for other purposes
@@ -103,7 +104,7 @@ class InferenceRecipe:
             ]
         )
         tokenized = self._tokenizer({"messages": messages}, inference=True)["tokens"]
-        tokenized += self._tokenizer.encode("<|im_start|>assistant\n<think>")
+        tokenized += self._tokenizer.encode("<|im_start|>assistant\n>")
         return tokenized
 
     @torch.inference_mode()
@@ -195,45 +196,20 @@ class InferenceRecipe:
                 self._model.setup_caches(
                     batch_size=1,
                     dtype=self._dtype,
-                    decoder_max_seq_len=2 * 8192,
+                    decoder_max_seq_len=8192,
                 )
 
         from datasets import load_dataset
 
         # Load the MMLU dataset from Hugging Face.
         dataset = load_dataset("cais/mmlu", "high_school_mathematics", split="test")
+        # dataset = load_dataset("cais/mmlu", "all", split="validation")
         total_questions = len(dataset)
         correct = 0
 
-        # Define 3-shot demonstration examples.
-        few_shot_prompt = (
-            "Example 1:\n"
-            "Question: If you have 5 apples and you eat 2, how many apples do you have left?\n"
-            "Options:\n"
-            "A. 2\n"
-            "B. 3\n"
-            "C. 4\n"
-            "D. 5\n"
-            "Answer: B\n\n"
-            "Example 2:\n"
-            "Question: What is 7 multiplied by 6?\n"
-            "Options:\n"
-            "A. 42\n"
-            "B. 36\n"
-            "C. 48\n"
-            "D. 56\n"
-            "Answer: A\n\n"
-            "Example 3:\n"
-            "Question: What is the square of 8?\n"
-            "Options:\n"
-            "A. 64\n"
-            "B. 72\n"
-            "C. 56\n"
-            "D. 48\n"
-            "Answer: A\n\n"
-        )
-
         cot_prompt = "Your role as an assistant involves thoroughly exploring questions through a systematic long thinking process before providing the final precise and accurate solutions. This requires engaging in a comprehensive cycle of analysis, summarizing, exploration, reassessment, reflection, backtracing, and iteration to develop well-considered thinking process. Please structure your response into two main sections: Thought and Solution. In the Thought section, detail your reasoning process using the specified format: <think> {thought with steps separated with '\n\n'} <think/> Each step should include detailed considerations such as analisying questions, summarizing relevant findings, brainstorming new ideas, verifying the accuracy of the current steps, refining any errors, and revisiting previous steps. In the Solution section, based on various attempts, explorations, and reflections from the Thought section, systematically present the final solution that you deem correct. The solution should remain a logical, accurate, concise expression style and detail necessary step needed to reach the conclusion, formatted as follows: <answer> {final formatted, precise, and clear solution} <answer/> Now, try to solve the following question through the above guidelines:"
+
+        sys_prompt = "You are an expert who knows everything, you are tasked to answer the following multiple-choice question. Give your final answer in the format of 'The answer is (chosen multiple-choice option)'."
 
         custom_generate_next_token = None
         if self._quantization_mode is not None:
@@ -256,6 +232,8 @@ class InferenceRecipe:
         start_time = time.perf_counter()
 
         for idx, example in tqdm(enumerate(dataset)):
+            self._model.reset_caches()
+
             question = example["question"]
             choices = example["choices"]
             answer = example["answer"]
@@ -263,12 +241,12 @@ class InferenceRecipe:
 
             # If choices is a list, convert it to a dict with keys A, B, C, ...
             if isinstance(choices, list):
-                labels = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+                labels = list("ABCD")
                 choices = {labels[i]: choice for i, choice in enumerate(choices)}
 
             # Build the prompt with 3-shot demonstration.
             # prompt_text = few_shot_prompt
-            prompt_text = cot_prompt
+            prompt_text = ""
             prompt_text += f"Question: {question}\nOptions:\n"
             for label, option in choices.items():
                 prompt_text += f"{label}. {option}\n"
@@ -277,10 +255,11 @@ class InferenceRecipe:
                 "user": prompt_text,
             }
 
+            prompt_dict["system"] = cot_prompt
             tokens = self.convert_prompt_to_tokens(prompt_dict)
             prompt_tensor = torch.tensor(tokens, dtype=torch.int, device=self._device)
 
-            generated_tokens, _ = generation.generate(
+            generated_tokens, generated_logits = generation.generate(
                 model=self._model,
                 prompt=prompt_tensor,
                 max_generated_tokens=cfg.max_new_tokens,
@@ -293,16 +272,13 @@ class InferenceRecipe:
             generated_tokens = generated_tokens.tolist()[0]
             output_text = self._tokenizer.decode(generated_tokens)
 
-            # Simple heuristic: the letter following "assistant\n" is taken as the answer.
-            try:
-                if "assistant\n" in output_text:
-                    predicted = output_text.split("assistant\n")[1]
-                    # Retrieve the first single-letter token as the predicted answer.
-                    predicted = next(
-                        word for word in predicted.split() if len(word) == 1
-                    )
-            except:
-                predicted = ""
+            logits = generated_logits[0, :, :]
+            choices_token_ids = [
+                self._tokenizer.encode(label) for label in choices.keys()
+            ]
+            choice_logits = logits[:, choices_token_ids]
+            choice_logits = choice_logits.amax(dim=0)
+            predicted = list(choices.keys())[torch.argmax(choice_logits).item()]
 
             is_correct = predicted.strip().upper() == str(answer).strip().upper()
             if is_correct:
@@ -311,8 +287,6 @@ class InferenceRecipe:
             logger.info(
                 f"Q{idx+1}: True Answer: {answer} | Model Answer: {predicted} | {'Correct' if is_correct else 'Incorrect'}"
             )
-
-            breakpoint()
 
         total_time = time.perf_counter() - start_time
         accuracy = correct / total_questions * 100
@@ -327,7 +301,7 @@ def main(cfg: DictConfig) -> None:
     recipe = InferenceRecipe(cfg=cfg)
     recipe.setup(cfg=cfg)
     # If evaluation mode is enabled, run MMLU evaluation; otherwise, do standard generation.
-    if cfg.get("evaluate_mmlu", False):
+    if cfg.get("mmlu", False):
         recipe.evaluate_mmlu(cfg=cfg)
     else:
         recipe.generate(cfg=cfg)
