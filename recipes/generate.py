@@ -202,8 +202,8 @@ class InferenceRecipe:
         from datasets import load_dataset
 
         # Load the MMLU dataset from Hugging Face.
-        dataset = load_dataset("cais/mmlu", "high_school_mathematics", split="test")
-        # dataset = load_dataset("cais/mmlu", "all", split="validation")
+        # dataset = load_dataset("cais/mmlu", "high_school_mathematics", split="test")
+        dataset = load_dataset("cais/mmlu", "all", split="validation")
         total_questions = len(dataset)
         correct = 0
 
@@ -220,7 +220,7 @@ class InferenceRecipe:
             _ = generation.generate(
                 model=self._model,
                 prompt=dummy_prompt,
-                max_generated_tokens=2,
+                max_generated_tokens=cfg.max_new_tokens,
                 temperature=cfg.temperature,
                 top_k=cfg.top_k,
                 stop_tokens=self._tokenizer.stop_tokens,
@@ -285,7 +285,7 @@ class InferenceRecipe:
                 correct += 1
 
             logger.info(
-                f"Q{idx+1}: True Answer: {answer} | Model Answer: {predicted} | {'Correct' if is_correct else 'Incorrect'}"
+                f"Q{idx+1}: True Answer: {answer} | Model Answer: {predicted} | {'Correct' if is_correct else 'Incorrect'} | Current Acc: {correct / (idx+1) * 100:.2f}%"
             )
 
         total_time = time.perf_counter() - start_time
