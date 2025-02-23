@@ -272,11 +272,20 @@ class InferenceRecipe:
             generated_tokens = generated_tokens.tolist()[0]
             output_text = self._tokenizer.decode(generated_tokens)
 
+            try:
+                # Parse for the content between <answer> and <answer/>
+                output_text = output_text[len(cot_prompt) :]
+                output_text = output_text.split("<answer>")[1].split("<answer/>")[0]
+                print(output_text)
+            except:
+                pass
+
             logits = generated_logits[0, :, :]
             choices_token_ids = [
                 self._tokenizer.encode(label) for label in choices.keys()
             ]
             choice_logits = logits[:, choices_token_ids]
+            choice_logits = choice_logits[-20:, :]
             choice_logits = choice_logits.amax(dim=0)
             predicted = list(choices.keys())[torch.argmax(choice_logits).item()]
 

@@ -77,31 +77,25 @@ class SmolLM2Tokenizer(ModelTokenizer, Transform):
         *,
         add_end_tokens: bool = True,
     ) -> Tuple[List[int], List[bool]]:
-        # Flatten messages by joining their content into a single string.
-        combined_input = ""
+        tokens: List[int] = []
+        mask: List[bool] = []
+
         for message in messages:
-            combined_input = (
-                combined_input
-                + "<|im_start|>"
+            # Build a string for this individual message
+            message_str = (
+                "<|im_start|>"
                 + message.role
                 + "\n"
                 + message.content[0]["content"]
                 + "<|im_end|>"
                 + "\n"
             )
-        # Tokenize the combined string using the Hugging Face tokenizer.
-        token_ids = self.tokenizer.encode(combined_input, add_special_tokens=False)
 
-        # Prepend the beginning-of-sequence token.
-        tokens = [self.bos_id] + token_ids
-        mask = [True] * len(tokens)
+            token_ids = self.tokenizer.encode(message_str, add_special_tokens=False)
+            tokens.extend(token_ids)
+            mask.extend([message.masked] * len(token_ids))
 
-        # Append the end-of-sequence token if required.
-        if add_end_tokens:
-            tokens.append(self.eos_id)
-            mask.append(True)
-
-        # Truncate tokens and mask to max_seq_len if needed.
+        # Truncate if max_seq_len is set
         if self.max_seq_len:
             tokens = tokens[: self.max_seq_len]
             mask = mask[: self.max_seq_len]
