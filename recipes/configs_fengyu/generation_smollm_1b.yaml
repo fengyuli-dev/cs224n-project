@@ -41,7 +41,7 @@ prompt:
   user: "How many letter Rs are in the word 'strawberry'?"
   # system: You are an expert who knows everything, you are tasked to answer the following multiple-choice question. Give your final answer in the format of 'The answer is (chosen multiple-choice option)'.
   # user: What is the capital of France? A - Paris, B - London, C - Berlin, D - Madrid
-max_new_tokens: 1000
+max_new_tokens: 1024
 temperature: 0.6 # 0.8 and 0.6 are popular values to try
 top_k: 300
 

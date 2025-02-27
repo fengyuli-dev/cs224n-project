@@ -181,15 +181,6 @@ class InferenceRecipe:
 
     @torch.inference_mode()
     def evaluate_mmlu(self, cfg: DictConfig):
-        """
-        Evaluate the model's accuracy on the MMLU benchmark accessed from Hugging Face.
-        Assumes that the dataset returns examples with the keys:
-            - "question": The question text.
-            - "choices": Either a dict mapping choice labels to option texts or a list of options.
-            - "answer": The correct choice label.
-        Optionally, if "choices" is a list, it is converted to a dict using A, B, C, etc.
-        Incorporates 3-shot demonstration examples.
-        """
 
         if cfg.enable_kv_cache:
             with self._device:
@@ -202,14 +193,15 @@ class InferenceRecipe:
         from datasets import load_dataset
 
         # Load the MMLU dataset from Hugging Face.
-        # dataset = load_dataset("cais/mmlu", "high_school_mathematics", split="test")
-        dataset = load_dataset("cais/mmlu", "all", split="validation")
+        # dataset = load_dataset("cais/mmlu", "high_school_computer_science", split="test")
+        dataset = load_dataset("cais/mmlu", "high_school_mathematics", split="test")
+        # dataset = load_dataset("cais/mmlu", "all", split="validation")
         total_questions = len(dataset)
         correct = 0
 
         cot_prompt = "Your role as an assistant involves thoroughly exploring questions through a systematic long thinking process before providing the final precise and accurate solutions. This requires engaging in a comprehensive cycle of analysis, summarizing, exploration, reassessment, reflection, backtracing, and iteration to develop well-considered thinking process. Please structure your response into two main sections: Thought and Solution. In the Thought section, detail your reasoning process using the specified format: <think> {thought with steps separated with '\n\n'} <think/> Each step should include detailed considerations such as analisying questions, summarizing relevant findings, brainstorming new ideas, verifying the accuracy of the current steps, refining any errors, and revisiting previous steps. In the Solution section, based on various attempts, explorations, and reflections from the Thought section, systematically present the final solution that you deem correct. The solution should remain a logical, accurate, concise expression style and detail necessary step needed to reach the conclusion, formatted as follows: <answer> {final formatted, precise, and clear solution} <answer/> Now, try to solve the following question through the above guidelines:"
 
-        sys_prompt = "You are an expert who knows everything, you are tasked to answer the following multiple-choice question. Give your final answer in the format of 'The answer is (chosen multiple-choice option)'."
+        sys_prompt = "You are an expert who knows everything, you are tasked to answer the following multiple-choice question. Give your final answer in the format of 'B/C/D/E"
 
         custom_generate_next_token = None
         if self._quantization_mode is not None:
@@ -241,7 +233,7 @@ class InferenceRecipe:
 
             # If choices is a list, convert it to a dict with keys A, B, C, ...
             if isinstance(choices, list):
-                labels = list("ABCD")
+                labels = list("BCDE")
                 choices = {labels[i]: choice for i, choice in enumerate(choices)}
 
             # Build the prompt with 3-shot demonstration.
@@ -272,20 +264,12 @@ class InferenceRecipe:
             generated_tokens = generated_tokens.tolist()[0]
             output_text = self._tokenizer.decode(generated_tokens)
 
-            try:
-                # Parse for the content between <answer> and <answer/>
-                output_text = output_text[len(cot_prompt) :]
-                output_text = output_text.split("<answer>")[1].split("<answer/>")[0]
-                print(output_text)
-            except:
-                pass
-
             logits = generated_logits[0, :, :]
             choices_token_ids = [
                 self._tokenizer.encode(label) for label in choices.keys()
             ]
+            logits = logits[-10:, :]
             choice_logits = logits[:, choices_token_ids]
-            choice_logits = choice_logits[-20:, :]
             choice_logits = choice_logits.amax(dim=0)
             predicted = list(choices.keys())[torch.argmax(choice_logits).item()]
 

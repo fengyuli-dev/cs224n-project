@@ -12,13 +12,13 @@ output_dir: ./ # Not needed
 
 # Model arguments
 model:
-  _component_: torchtune.models.smollm2.smollm2_135m
+  _component_: torchtune.models.smollm2.smollm2_360m
 
 checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
-  checkpoint_dir: /lfs/local/0/fengyuli/.cache/huggingface/hub/models--HuggingFaceTB--SmolLM2-135M-Instruct/snapshots/e2c3f7557efbdec707ae3a336371d169783f1da1
+  checkpoint_dir: /lfs/local/0/fengyuli/.cache/huggingface/hub/models--HuggingFaceTB--SmolLM2-360M-Instruct/snapshots/15f2fec6413205b4e1cdac7ac5e575b5e2fbb933
   checkpoint_files: [model.safetensors]
-  # checkpoint_dir: /lfs/local/0/fengyuli/output/cs224n/smollm_135m/epoch_4
+  # checkpoint_dir: /lfs/local/0/fengyuli/output/cs224n/smollm_1b/epoch_4
   # checkpoint_files: [ft-model-00001-of-00001.safetensors]
   output_dir: ${output_dir}
   model_type: LLAMA3_2
