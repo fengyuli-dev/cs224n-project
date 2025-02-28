@@ -223,6 +223,8 @@ class InferenceRecipe:
         logger.info(f"Starting MMLU evaluation over {total_questions} questions.")
         start_time = time.perf_counter()
 
+        response_lengths = []
+
         for idx, example in tqdm(enumerate(dataset)):
             self._model.reset_caches()
 
@@ -247,7 +249,7 @@ class InferenceRecipe:
                 "user": prompt_text,
             }
 
-            prompt_dict["system"] = cot_prompt
+            prompt_dict["system"] = sys_prompt
             tokens = self.convert_prompt_to_tokens(prompt_dict)
             prompt_tensor = torch.tensor(tokens, dtype=torch.int, device=self._device)
 
@@ -263,6 +265,10 @@ class InferenceRecipe:
             )
             generated_tokens = generated_tokens.tolist()[0]
             output_text = self._tokenizer.decode(generated_tokens)
+
+            prompt_length = len(prompt_dict["user"]) + len(prompt_dict["system"])
+            response_lengths.append(len(output_text) - prompt_length)
+            print(response_lengths[-1])
 
             logits = generated_logits[0, :, :]
             choices_token_ids = [
@@ -280,6 +286,13 @@ class InferenceRecipe:
             logger.info(
                 f"Q{idx+1}: True Answer: {answer} | Model Answer: {predicted} | {'Correct' if is_correct else 'Incorrect'} | Current Acc: {correct / (idx+1) * 100:.2f}%"
             )
+
+            if len(response_lengths) == 100:
+                # Save response_lengths to a file
+                with open("response_lengths.txt", "w") as f:
+                    for item in response_lengths:
+                        f.write(f"{item}\n")
+                exit()
 
         total_time = time.perf_counter() - start_time
         accuracy = correct / total_questions * 100
